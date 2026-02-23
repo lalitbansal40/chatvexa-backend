@@ -73,14 +73,18 @@ export const interpolate = (
   return template.replace(/{{(.*?)}}/g, (_, key) => {
     const k = key.trim();
 
+    const value = k.split(".").reduce(
+      (acc: any, part: string) => acc?.[part],
+      data
+    );
+
+    console.log("Interpolating:", k, "=>", value);
+
     if (k === "now") {
       return new Date().toISOString();
     }
 
-    return k.split(".").reduce(
-      (acc: any, part: string) => acc?.[part],
-      data
-    ) ?? "";
+    return value ?? "";
   });
 };
 

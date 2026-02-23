@@ -195,6 +195,7 @@ export const executeNode = async ({
           ...session.data,
           address: structuredAddress.fullAddress,
           addressData: {
+            text: structuredAddress.fullAddress,
             latitude: structuredAddress.latitude,
             longitude: structuredAddress.longitude,
             googleMapsUrl: structuredAddress.googleMapsUrl
@@ -478,12 +479,13 @@ export const executeNode = async ({
       }
 
       // 4️⃣ SAVE RESPONSE
-      const saveKey = node.save_to || "borzo";
+      const saveKey = node.save_to || "borzo_amount";
+
       await Contact.updateOne(
         { _id: contact._id },
         {
           $set: {
-            [`attributes.${saveKey}`]: response,
+            [`attributes.${saveKey}`]: response.order.payment_amount,
           },
         }
       );
@@ -510,9 +512,10 @@ export const executeNode = async ({
       if (!contact) throw new Error("Contact not found");
 
       const context = {
+        data: session.data,
         ...session.data,
-        phone: contact.phone,
-        name: contact.name,
+        contact,
+        ...contact.attributes, // 🔥 THIS IS THE REAL FIX
       };
 
       const itemAmount = Number(
@@ -522,6 +525,7 @@ export const executeNode = async ({
       const deliveryAmount = Number(
         interpolate(node.config.delivery_amount, context)
       );
+
 
       const totalAmount = itemAmount + deliveryAmount;
 
@@ -558,9 +562,10 @@ export const executeNode = async ({
       if (!contact) throw new Error("Contact not found");
 
       const context = {
+        data: session.data,
         ...session.data,
-        phone: contact.phone,
-        name: contact.name,
+        contact,
+        ...contact.attributes,
       };
 
       /* =========================

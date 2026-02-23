@@ -22,8 +22,8 @@ export const buildBorzoPayload = (
                     interpolate(node.pickup?.longitude || "", sessionData)
                 ),
                 contact_person: {
-                    phone: contact.phone,
-                    name: contact.name,
+                    phone: node.pickup?.phone,
+                    name: node.pickup?.name,
                 },
             },
             {

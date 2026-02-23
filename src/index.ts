@@ -13,7 +13,7 @@ import { connectMongo } from "./database/mongodb"; // ✅ CHANGE: Mongo connect
 dotenv.config({ path: path.join(".env") });
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 5005;
 
 /* =========================
    🔹 RAW BODY (WEBHOOK SAFE)
