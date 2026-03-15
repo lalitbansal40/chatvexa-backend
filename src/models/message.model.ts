@@ -3,11 +3,11 @@ import mongoose, { Schema, Document } from "mongoose";
 export type MessageDirection = "IN" | "OUT";
 
 export type MessageStatus =
-  | "PENDING"     // saved, not yet sent
-  | "SENT"        // WhatsApp accepted
-  | "DELIVERED"   // delivered to user
-  | "READ"        // user read
-  | "FAILED";     // API error / webhook error
+  | "PENDING" // saved, not yet sent
+  | "SENT" // WhatsApp accepted
+  | "DELIVERED" // delivered to user
+  | "READ" // user read
+  | "FAILED"; // API error / webhook error
 
 export type MessageType =
   | "text"
@@ -32,9 +32,11 @@ export interface MessageDocument extends Document {
   payload: Record<string, any>; // 🔥 full raw message
 
   error?: string;
+  reply_to?: string | null;
 
   createdAt: Date;
   updatedAt: Date;
+  is_read: boolean;
 }
 
 const MessageSchema = new Schema<MessageDocument>(
@@ -45,6 +47,10 @@ const MessageSchema = new Schema<MessageDocument>(
     direction: { type: String, enum: ["IN", "OUT"], required: true },
     type: { type: String, required: true },
 
+    is_read: {
+      type: Boolean,
+      default: false,
+    },
     status: {
       type: String,
       enum: ["PENDING", "SENT", "DELIVERED", "READ", "FAILED"],
@@ -55,10 +61,14 @@ const MessageSchema = new Schema<MessageDocument>(
     wa_message_id: { type: String, index: true },
 
     payload: { type: Schema.Types.Mixed, required: true },
+    reply_to: {
+      type: String,
+      default: null,
+    },
 
     error: { type: String },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const Message =

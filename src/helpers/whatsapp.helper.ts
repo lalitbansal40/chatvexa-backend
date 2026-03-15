@@ -1,6 +1,6 @@
 import axios from "axios";
 import dotenv from "dotenv";
-import path from "path"
+import path from "path";
 dotenv.config({ path: path.join(".env") });
 /* =========================
    SESSION MANAGEMENT
@@ -10,21 +10,20 @@ export interface UserSession {
   longitude: any;
   latitude: any;
   step:
-  | "CHOOSE_LANGUAGE" // New step
-  | "WAITING_FOR_LOCATION"
-  | "CONFIRM_ADDRESS"
-  | "CHOOSE_CAKE_TYPE"
-  | "FLOW_COMPLETED"
-  | "PAYMENT_LINK_SENT";
+    | "CHOOSE_LANGUAGE" // New step
+    | "WAITING_FOR_LOCATION"
+    | "CONFIRM_ADDRESS"
+    | "CHOOSE_CAKE_TYPE"
+    | "FLOW_COMPLETED"
+    | "PAYMENT_LINK_SENT";
   language?: "ENGLISH" | "HINDI"; // Store preference
   location?: { latitude: number; longitude: number } | null;
   address?: string;
   structuredAddress?: any;
-  bill: any
+  bill: any;
 }
 
 const sessions = new Map<string, UserSession>();
-
 
 export const getSession = (user: string): UserSession | undefined =>
   sessions.get(user);
@@ -32,8 +31,7 @@ export const getSession = (user: string): UserSession | undefined =>
 export const setSession = (user: string, data: UserSession) =>
   sessions.set(user, data);
 
-export const clearSession = (user: string) =>
-  sessions.delete(user);
+export const clearSession = (user: string) => sessions.delete(user);
 
 /* =========================
    GEOCODING
@@ -43,7 +41,7 @@ const GOOGLE_MAPS_KEY = process.env.GOOGLE_MAPS_KEY!;
 
 export const reverseGeocode = async (
   latitude: number,
-  longitude: number
+  longitude: number,
 ): Promise<string> => {
   try {
     const res = await axios.get(
@@ -51,32 +49,27 @@ export const reverseGeocode = async (
       {
         params: {
           latlng: `${latitude},${longitude}`,
-          key: GOOGLE_MAPS_KEY
+          key: GOOGLE_MAPS_KEY,
         },
-      }
+      },
     );
-    return (
-      res.data?.results?.[0]?.formatted_address ||
-      "Address not found"
-    );
+    return res.data?.results?.[0]?.formatted_address || "Address not found";
   } catch (error) {
     console.error("reverseGeocode error:", error);
     return "Address not found";
   }
 };
 
-
 export const interpolate = (
   template: string,
-  data: Record<string, any> = {}
+  data: Record<string, any> = {},
 ) => {
   return template.replace(/{{(.*?)}}/g, (_, key) => {
     const k = key.trim();
 
-    const value = k.split(".").reduce(
-      (acc: any, part: string) => acc?.[part],
-      data
-    );
+    const value = k
+      .split(".")
+      .reduce((acc: any, part: string) => acc?.[part], data);
 
     console.log("Interpolating:", k, "=>", value);
 
@@ -88,3 +81,26 @@ export const interpolate = (
   });
 };
 
+export const sendTypingIndicator = async (
+  phoneNumberId: string,
+  accessToken: string,
+  messageId: string
+) => {
+  await axios.post(
+    `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+    {
+      messaging_product: "whatsapp",
+      status: "read",
+      message_id: messageId,
+      typing_indicator: {
+        type: "text"
+      }
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+};

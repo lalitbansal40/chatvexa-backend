@@ -19,25 +19,23 @@ export interface WhatsAppClient {
       cta?: string;
       startScreen?: string;
       data?: Record<string, any>; // 👈 dynamic data
-    }
+    },
   ): Promise<void>;
-
 
   // ✅ ADD THIS
   sendButtons(
     to: string,
     bodyText: string,
-    buttons: WhatsAppButton[]
+    buttons: WhatsAppButton[],
   ): Promise<void>;
 
   sendUrlButton(
     to: string,
     bodyText: string,
     buttonText: string,
-    url: string
+    url: string,
   ): Promise<void>;
 }
-
 
 export const createWhatsAppClient = (
   channel: {
@@ -47,7 +45,7 @@ export const createWhatsAppClient = (
   },
   contact: {
     _id: any;
-  }
+  },
 ): WhatsAppClient => {
   const api = axios.create({
     baseURL: `https://graph.facebook.com/v24.0/${channel.phone_number_id}`,
@@ -63,6 +61,8 @@ export const createWhatsAppClient = (
 
   return {
     async sendText(to, text) {
+      const timestamp = Math.floor(Date.now() / 1000);
+
       // 1️⃣ SAVE AS PENDING
       const msg = await Message.create({
         channel_id: channel._id,
@@ -70,7 +70,15 @@ export const createWhatsAppClient = (
         direction: "OUT",
         type: "text",
         status: "PENDING",
-        payload: { text },
+        is_read: true,
+        payload: {
+          from: channel.phone_number_id,
+          timestamp: String(timestamp),
+          text: {
+            body: text,
+          },
+          type: "text",
+        },
       });
 
       try {
@@ -84,13 +92,14 @@ export const createWhatsAppClient = (
 
         const waId = res.data?.messages?.[0]?.id;
 
-        // 3️⃣ UPDATE → SENT
+        // 3️⃣ UPDATE MESSAGE
         await Message.updateOne(
           { _id: msg._id },
           {
             status: "SENT",
             wa_message_id: waId,
-          }
+            "payload.id": waId,
+          },
         );
 
         // 4️⃣ UPDATE CONTACT LAST MESSAGE
@@ -101,25 +110,22 @@ export const createWhatsAppClient = (
               last_message_id: msg._id,
               last_message_at: new Date(),
             },
-          }
+          },
         );
-
       } catch (e: any) {
-        // 5️⃣ FAILED
         await Message.updateOne(
           { _id: msg._id },
           {
             status: "FAILED",
             error: JSON.stringify(
-              e?.response?.data || e?.message || "Unknown error"
+              e?.response?.data || e?.message || "Unknown error",
             ),
-          }
+          },
         );
 
         logError("sendText", e);
       }
     },
-
     async requestLocation(to, text) {
       // 1️⃣ SAVE AS PENDING
       const msg = await Message.create({
@@ -129,10 +135,11 @@ export const createWhatsAppClient = (
         type: "location_request",
         status: "PENDING",
         payload: { text },
+        is_read: true,
       });
 
       try {
-        await api.post("/messages", {
+        const res = await api.post("/messages", {
           messaging_product: "whatsapp",
           to,
           type: "interactive",
@@ -143,10 +150,15 @@ export const createWhatsAppClient = (
           },
         });
 
+        const waId = res.data?.messages?.[0]?.id;
+
         // 2️⃣ SENT
         await Message.updateOne(
           { _id: msg._id },
-          { status: "SENT" }
+          {
+            status: "SENT",
+            wa_message_id: waId,
+          },
         );
 
         // 3️⃣ UPDATE CONTACT
@@ -157,17 +169,17 @@ export const createWhatsAppClient = (
               last_message_id: msg._id,
               last_message_at: new Date(),
             },
-          }
+          },
         );
-
       } catch (e: any) {
         await Message.updateOne(
           { _id: msg._id },
           {
-            status: "FAILED", error: JSON.stringify(
-              e?.response?.data || e?.message || "Unknown error"
+            status: "FAILED",
+            error: JSON.stringify(
+              e?.response?.data || e?.message || "Unknown error",
             ),
-          }
+          },
         );
         logError("requestLocation", e);
       }
@@ -182,7 +194,7 @@ export const createWhatsAppClient = (
         cta?: string;
         startScreen?: string;
         data?: Record<string, any>;
-      }
+      },
     ) {
       // 1️⃣ SAVE MESSAGE
       const msg = await Message.create({
@@ -192,10 +204,11 @@ export const createWhatsAppClient = (
         type: "flow",
         status: "PENDING",
         payload: { flowId, options },
+        is_read: true,
       });
 
       try {
-        await api.post("/messages", {
+        const res = await api.post("/messages", {
           messaging_product: "whatsapp", // ✅ MUST be top-level
           to,
           type: "interactive",
@@ -230,16 +243,19 @@ export const createWhatsAppClient = (
                     ...(options.data || {}),
                   },
                 },
-
               },
             },
           },
         });
 
+        const waId = res.data?.messages?.[0]?.id;
         // 2️⃣ SENT
         await Message.updateOne(
           { _id: msg._id },
-          { status: "SENT" }
+          {
+            status: "SENT",
+            wa_message_id: waId,
+          },
         );
 
         // 3️⃣ UPDATE CONTACT
@@ -250,18 +266,17 @@ export const createWhatsAppClient = (
               last_message_id: msg._id,
               last_message_at: new Date(),
             },
-          }
+          },
         );
-
       } catch (e: any) {
         await Message.updateOne(
           { _id: msg._id },
           {
             status: "FAILED",
             error: JSON.stringify(
-              e?.response?.data || e?.message || "Unknown error"
+              e?.response?.data || e?.message || "Unknown error",
             ),
-          }
+          },
         );
 
         logError("sendFlow", e);
@@ -277,12 +292,13 @@ export const createWhatsAppClient = (
         type: "button",
         status: "PENDING",
         payload: { bodyText, buttons },
+        is_read: true,
       });
 
       try {
         const safeButtons = buttons.slice(0, 3);
 
-        await api.post("/messages", {
+        const res = await api.post("/messages", {
           messaging_product: "whatsapp", // ✅ MUST be top-level
           to,
           type: "interactive",
@@ -295,7 +311,7 @@ export const createWhatsAppClient = (
               buttons: safeButtons.map((btn) => ({
                 type: "reply",
                 reply: {
-                  id: String(btn.id),        // ✅ force string
+                  id: String(btn.id), // ✅ force string
                   title: btn.title.substring(0, 20),
                 },
               })),
@@ -303,10 +319,14 @@ export const createWhatsAppClient = (
           },
         });
 
+        const waId = res.data?.messages?.[0]?.id;
         // 2️⃣ UPDATE STATUS
         await Message.updateOne(
           { _id: msg._id },
-          { status: "SENT" }
+          {
+            status: "SENT",
+            wa_message_id: waId,
+          },
         );
 
         // 3️⃣ UPDATE CONTACT
@@ -317,18 +337,17 @@ export const createWhatsAppClient = (
               last_message_id: msg._id,
               last_message_at: new Date(),
             },
-          }
+          },
         );
-
       } catch (e: any) {
         await Message.updateOne(
           { _id: msg._id },
           {
             status: "FAILED",
             error: JSON.stringify(
-              e?.response?.data || e?.message || "Unknown error"
+              e?.response?.data || e?.message || "Unknown error",
             ),
-          }
+          },
         );
 
         logError("sendButtons", e);
@@ -343,10 +362,11 @@ export const createWhatsAppClient = (
         type: "cta_url",
         status: "PENDING",
         payload: { bodyText, buttonText, url },
+        is_read: true,
       });
 
       try {
-        await api.post("/messages", {
+        const res = await api.post("/messages", {
           messaging_product: "whatsapp",
           to,
           type: "interactive",
@@ -365,9 +385,13 @@ export const createWhatsAppClient = (
           },
         });
 
+        const waId = res.data?.messages?.[0]?.id;
         await Message.updateOne(
           { _id: msg._id },
-          { status: "SENT" }
+          {
+            status: "SENT",
+            wa_message_id: waId,
+          },
         );
 
         await Contact.updateOne(
@@ -377,7 +401,7 @@ export const createWhatsAppClient = (
               last_message_id: msg._id,
               last_message_at: new Date(),
             },
-          }
+          },
         );
       } catch (e: any) {
         await Message.updateOne(
@@ -385,15 +409,13 @@ export const createWhatsAppClient = (
           {
             status: "FAILED",
             error: JSON.stringify(
-              e?.response?.data || e?.message || "Unknown error"
+              e?.response?.data || e?.message || "Unknown error",
             ),
-          }
+          },
         );
 
         logError("sendUrlButton", e);
       }
-    }
-
-
+    },
   };
 };

@@ -7,8 +7,9 @@ export interface UserDocument extends Document {
   email: string;
   phone: string;
   password: string;
+  name: string;
+  role: "admin" | "user";
   is_active: boolean;
-
   subscription?: {
     plan: PlanType;
     payment_status: PaymentStatus;
@@ -31,6 +32,14 @@ const UserSchema = new Schema<UserDocument>(
       unique: true,
       lowercase: true,
       index: true,
+    },
+    name: {
+      type: String,
+    },
+    role: {
+      type: String,
+      enum: ["admin", "user"],
+      default: "user",
     },
 
     phone: {
@@ -78,7 +87,7 @@ const UserSchema = new Schema<UserDocument>(
       },
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const User =

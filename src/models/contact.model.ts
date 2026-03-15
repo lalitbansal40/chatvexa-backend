@@ -6,7 +6,6 @@ export interface ContactDocument extends Document {
   channel_id: mongoose.Types.ObjectId;
   last_message_id: mongoose.Types.ObjectId;
 
-
   last_message?: string;
   last_message_at?: Date;
 
@@ -14,6 +13,7 @@ export interface ContactDocument extends Document {
 
   createdAt: Date;
   updatedAt: Date;
+  unread_count: number;
 }
 
 const ContactSchema = new Schema<ContactDocument>(
@@ -35,6 +35,7 @@ const ContactSchema = new Schema<ContactDocument>(
 
     last_message: { type: String },
     last_message_at: { type: Date },
+    unread_count: { type: Number, default: 0 },
 
     // 🔥 ALL AUTOMATION DATA STORED HERE
     attributes: {
@@ -42,7 +43,7 @@ const ContactSchema = new Schema<ContactDocument>(
       default: {},
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // one contact per channel + phone
