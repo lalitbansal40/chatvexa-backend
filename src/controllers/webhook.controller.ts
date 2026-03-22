@@ -9,6 +9,9 @@ import { runAutomation } from "../engine/automationExecuter";
 import Contact from "../models/contact.model";
 import Message from "../models/message.model";
 import { sendTypingIndicator } from "../helpers/whatsapp.helper";
+import { downloadWhatsAppMedia } from "../helpers/downloadMedia";
+import { uploadToS3 } from "../services/s3.service";
+import axios from "axios";
 dotenv.config({ path: path.join(".env") });
 
 const SHEET_ID = "1xlAP136l66VtTjoMkdTEueo-FXKD7_L1RJUlaxefXzI";
@@ -58,14 +61,27 @@ export const verifyWebhook = async (
 ===================================================== */
 export const receiveMessage = async (req: Request, res: Response) => {
   try {
-    console.log("req.bod.   ::  ", JSON.stringify(req.body));
+    console.log("req.body ::", JSON.stringify(req.body));
+
     const value = req.body?.entry?.[0]?.changes?.[0]?.value;
+
+    // ✅ STATUS UPDATE (DELIVERED / READ)
+    if (value?.statuses) {
+      const status = value.statuses[0];
+
+      await Message.updateOne(
+        { wa_message_id: status.id },
+        { status: status.status.toUpperCase() },
+      );
+
+      return res.sendStatus(200);
+    }
+
     if (!value?.messages) return res.sendStatus(200);
 
     const phoneNumberId = value.metadata.phone_number_id;
     const message = value.messages[0];
     const from = message.from;
-    const text = message.text?.body || "";
 
     const channel = await Channel.findOne({
       phone_number_id: phoneNumberId,
@@ -80,49 +96,144 @@ export const receiveMessage = async (req: Request, res: Response) => {
     });
     if (!automation) return res.sendStatus(200);
 
+    // 👤 CONTACT UPSERT
     const contact = await Contact.findOneAndUpdate(
-      {
-        channel_id: channel._id,
-        phone: from,
-      },
-      {
-        $set: {
-          name: value.contacts?.[0]?.profile?.name,
-        },
-      },
-      {
-        upsert: true,
-        new: true,
-      },
+      { channel_id: channel._id, phone: from },
+      { $set: { name: value.contacts?.[0]?.profile?.name } },
+      { upsert: true, new: true },
     );
 
-    const incoming = value.messages[0];
-    const replyTo = incoming.context?.id || null;
+    // 🚫 DUPLICATE CHECK
+    const existing = await Message.findOne({
+      wa_message_id: message.id,
+    });
 
+    if (existing) {
+      return res.sendStatus(200);
+    }
+
+    // 🔥 MESSAGE PARSING
+    let text: string | null = null;
+    let media: any = null;
+
+    // TEXT
+    if (message.type === "text") {
+      text = message.text?.body || null;
+    }
+
+    // MEDIA TYPES
+    else if (["image", "video", "audio", "document"].includes(message.type)) {
+      const mediaObj = message[message.type];
+
+      try {
+        console.log("Processing media:", message.type);
+
+        // ✅ UNIVERSAL CAPTION HANDLING
+        text = extractCaption(mediaObj);
+
+        // 🔥 STEP 1: Get real media URL
+        const metaRes = await axios.get(
+          `https://graph.facebook.com/v19.0/${mediaObj.id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${channel.access_token}`,
+            },
+          },
+        );
+
+        const realUrl = metaRes.data.url;
+
+        // 🔥 STEP 2: Download
+        const buffer = await downloadWhatsAppMedia(
+          realUrl,
+          channel.access_token,
+        );
+
+        // 🔥 STEP 3: Upload to S3
+        const s3Url = await uploadToS3(buffer, mediaObj.mime_type);
+
+        // 🔥 SAVE MEDIA
+        media = {
+          url: s3Url,
+          mime_type: mediaObj.mime_type,
+          filename: mediaObj.filename || null,
+        };
+      } catch (err) {
+        console.error("❌ Media processing failed:", err);
+
+        // fallback
+        media = {
+          url: mediaObj.url,
+          mime_type: mediaObj.mime_type,
+          filename: mediaObj.filename || null,
+        };
+
+        // fallback caption
+        text = extractCaption(mediaObj);
+      }
+    }
+
+    // CONTACT SHARE
+    else if (message.type === "contacts") {
+      const c = message.contacts[0];
+
+      text = c?.name?.formatted_name || "Shared Contact";
+
+      await Contact.updateOne(
+        { _id: contact._id },
+        {
+          $set: {
+            "attributes.shared_contact": c,
+          },
+        },
+      );
+    }
+
+    // LOCATION
+    else if (message.type === "location") {
+      const loc = message.location;
+
+      text = `Location: ${loc.latitude}, ${loc.longitude}`;
+
+      await Contact.updateOne(
+        { _id: contact._id },
+        {
+          $set: {
+            "attributes.delivery_address": loc,
+          },
+        },
+      );
+    }
+
+    // SAVE MESSAGE
     const msg = await Message.create({
       channel_id: channel._id,
       contact_id: contact._id,
       direction: "IN",
-      type: incoming.type || "unknown",
+      type: message.type,
       status: "SENT",
-      wa_message_id: incoming.id,
-      reply_to: incoming.context?.id || null, // ⭐ important
-      payload: incoming,
+      wa_message_id: message.id,
+      reply_to: message.context?.id || null,
+      text,
+      media,
+      payload: message,
       is_read: false,
     });
 
-    // update contact last message
+    // UPDATE CONTACT
     await Contact.updateOne(
       { _id: contact._id },
       {
         $inc: { unread_count: 1 },
         $set: {
           last_message_id: msg._id,
+          last_message: text || media?.url || "Media",
           last_message_at: new Date(),
         },
       },
     );
 
+    // 🧠 AUTOMATION SESSION
     let session = await AutomationSession.findOne({
       phone: from,
       automation_id: automation._id,
@@ -133,7 +244,7 @@ export const receiveMessage = async (req: Request, res: Response) => {
         phone: from,
         automation_id: automation._id,
         channel_id: channel._id,
-        contact_id: contact._id, // 🔥 IMPORTANT
+        contact_id: contact._id,
         current_node: "start",
         waiting_for: null,
         data: {},
@@ -146,10 +257,8 @@ export const receiveMessage = async (req: Request, res: Response) => {
     sendTypingIndicator(
       channel.phone_number_id,
       channel.access_token,
-      incoming.id,
+      message.id,
     );
-
-    // stop typing after 3 seconds (non-blocking)
 
     await runAutomation({
       automation,
@@ -167,4 +276,8 @@ export const receiveMessage = async (req: Request, res: Response) => {
     console.error("❌ receiveMessage error", error);
     return res.sendStatus(200);
   }
+};
+
+const extractCaption = (mediaObj: any) => {
+  return mediaObj?.caption || null;
 };

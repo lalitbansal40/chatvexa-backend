@@ -1,30 +1,43 @@
-import { Request, Response, NextFunction } from "express";
-import User from "../models/user.model";
-import mongoose from "mongoose";
+import { Response, NextFunction } from "express";
+import { AuthRequest } from "../types/auth.types";
+import Subscription from "../models/subcription.model";
+import { Types } from "mongoose";
 
+/* =====================================================
+   SUBSCRIPTION GUARD (ACCOUNT LEVEL)
+===================================================== */
 export const subscriptionGuard = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
-  const userId = (req.user as any)?.user_id;
+  try {
+    const accountId = req.user?.account_id;
 
-  if (!userId) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-  
-  const user = await User.findOne({
-    _id: new mongoose.Types.ObjectId(userId),
-    is_active: true,
-    "subscription.is_active": true,
-    "subscription.payment_status": "paid",
-    "subscription.payment_end_date": { $gte: new Date() },
-  });
-  if (!user) {
-    return res.status(403).json({
-      message: "Subscription inactive or expired",
+    if (!accountId) {
+      return res.status(401).json({
+        message: "Unauthorized",
+      });
+    }
+
+    const subscription = await Subscription.findOne({
+      account_id: new Types.ObjectId(accountId),
+      payment_status: "paid",
+      payment_end_date: { $gte: new Date() },
+    });
+
+    if (!subscription) {
+      return res.status(403).json({
+        message: "Subscription inactive or expired",
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error("Subscription guard error:", error);
+
+    return res.status(500).json({
+      message: "Internal server error",
     });
   }
-
-  next();
 };

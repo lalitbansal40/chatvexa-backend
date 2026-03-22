@@ -1,7 +1,4 @@
-import {
-  AutomationDocument,
-  AutomationNode,
-} from "../models/automation.model";
+import { AutomationDocument, AutomationNode } from "../models/automation.model";
 import Contact from "../models/contact.model";
 import { AutomationSessionDocument } from "../models/automationSession.model";
 import { WhatsAppClient } from "../services/whatsapp.client";
@@ -34,7 +31,6 @@ interface Context {
   }) => Promise<void>;
 }
 
-
 /* =========================
    NODE EXECUTOR
 ========================= */
@@ -60,9 +56,7 @@ export const executeNode = async ({
       waiting_for: null,
     });
 
-    const nextNode = automation.nodes.find(
-      (n) => n.id === nextNodeId
-    );
+    const nextNode = automation.nodes.find((n) => n.id === nextNodeId);
 
     if (!nextNode) return;
 
@@ -75,7 +69,6 @@ export const executeNode = async ({
       updateSession,
     });
   };
-
 
   /* ===============================
      NODE TYPE HANDLING
@@ -97,9 +90,7 @@ export const executeNode = async ({
         }
       }
 
-
       if (node.buttons?.length) {
-
         // 🔒 prevent duplicate button send
         if (session.waiting_for === "button") return;
 
@@ -126,15 +117,13 @@ export const executeNode = async ({
       if (message.location) {
         const addressText = await reverseGeocode(
           message.location.latitude,
-          message.location.longitude
+          message.location.longitude,
         );
         structuredAddress = await getStructuredAddress(addressText);
-      }
-
-      /* =========================
+      } else if (
+        /* =========================
          2️⃣ TYPED ADDRESS
       ========================= */
-      else if (
         message.text?.body &&
         !message.interactive?.button_reply &&
         !message.interactive?.nfm_reply
@@ -180,11 +169,11 @@ export const executeNode = async ({
               latitude: structuredAddress.latitude,
               longitude: structuredAddress.longitude,
               structured: structuredAddress,
-              googleMapsUrl: structuredAddress.googleMapsUrl
+              googleMapsUrl: structuredAddress.googleMapsUrl,
             },
           },
         },
-        { upsert: true }
+        { upsert: true },
       );
 
       /* =========================
@@ -198,7 +187,7 @@ export const executeNode = async ({
             text: structuredAddress.fullAddress,
             latitude: structuredAddress.latitude,
             longitude: structuredAddress.longitude,
-            googleMapsUrl: structuredAddress.googleMapsUrl
+            googleMapsUrl: structuredAddress.googleMapsUrl,
           },
         },
       });
@@ -216,7 +205,7 @@ export const executeNode = async ({
       });
 
       return executeNode({
-        node: automation.nodes.find(n => n.id === nextNodeId)!,
+        node: automation.nodes.find((n) => n.id === nextNodeId)!,
         automation,
         session,
         message,
@@ -237,9 +226,7 @@ export const executeNode = async ({
 
         let parsedData: any = {};
         try {
-          parsedData = JSON.parse(
-            message.interactive.nfm_reply.response_json
-          );
+          parsedData = JSON.parse(message.interactive.nfm_reply.response_json);
         } catch (err) {
           console.error("❌ Invalid flow JSON", err);
           return;
@@ -252,7 +239,7 @@ export const executeNode = async ({
             $set: {
               [`attributes.${saveKey}`]: parsedData,
             },
-          }
+          },
         );
 
         // 🔁 MOVE TO NEXT NODE (IF ANY)
@@ -264,7 +251,7 @@ export const executeNode = async ({
           waiting_for: null,
         });
 
-        const nextNode = automation.nodes.find(n => n.id === nextNodeId);
+        const nextNode = automation.nodes.find((n) => n.id === nextNodeId);
         if (!nextNode) return;
 
         // 🚀 AUTO EXECUTE NEXT NODE
@@ -311,12 +298,11 @@ export const executeNode = async ({
         node.reference_lat!,
         node.reference_lng!,
         address.latitude,
-        address.longitude
+        address.longitude,
       );
 
-      const condition = distance <= node.max_distance_km!
-        ? "IN_RANGE"
-        : "OUT_OF_RANGE";
+      const condition =
+        distance <= node.max_distance_km! ? "IN_RANGE" : "OUT_OF_RANGE";
 
       // optional: save distance
       await updateSession({
@@ -329,13 +315,13 @@ export const executeNode = async ({
       const nextNodeId = getNextNodeByCondition(
         automation.edges,
         node.id,
-        condition
+        condition,
       );
 
       if (!nextNodeId) return;
 
       return executeNode({
-        node: automation.nodes.find(n => n.id === nextNodeId)!,
+        node: automation.nodes.find((n) => n.id === nextNodeId)!,
         automation,
         session,
         message,
@@ -346,40 +332,31 @@ export const executeNode = async ({
 
     case "google_sheet": {
       // 1️⃣ ensure integration enabled
-      await getIntegration(
-        automation.account_id.toString(),
-        "google_sheet"
-      );
+      await getIntegration(automation.account_id.toString(), "google_sheet");
 
       if (!node.spreadsheet_id || !node.sheet_name) {
         throw new Error("Google Sheet node not configured");
       }
 
       // 2️⃣ FETCH CONTACT (🔥 THIS WAS MISSING)
-      const contact = await Contact.findById(
-        session.contact_id
-      ).lean();
+      const contact = await Contact.findById(session.contact_id).lean();
 
       if (!contact) {
         throw new Error("Contact not found for Google Sheet node");
       }
 
       // 3️⃣ create service using NODE spreadsheet_id
-      const sheet = new GoogleSheetService(
-        node.spreadsheet_id
-      );
+      const sheet = new GoogleSheetService(node.spreadsheet_id);
 
       // 4️⃣ load headers (source of truth)
-      const headers = await sheet.getHeaders(
-        node.sheet_name
-      );
+      const headers = await sheet.getHeaders(node.sheet_name);
 
       // 5️⃣ build payload (future-proof)
       const payload = makeGoogleSheetPayload(
         headers,
         contact,
         session.data,
-        node.map // optional override
+        node.map, // optional override
       );
 
       console.log("GOOGLE SHEET PAYLOAD:", payload);
@@ -394,17 +371,15 @@ export const executeNode = async ({
 
     case "borzo_delivery": {
       // 1️⃣ get borzo client (account based)
-      const borzoSecrets = await getIntegration(
+      const { config, secrets } = await getIntegration(
         automation.account_id.toString(),
-        "borzo"
+        "borzo",
       );
 
-      const borzo = await new BorzoApiClient(borzoSecrets.auth_token, borzoSecrets.environment);
+      const borzo = new BorzoApiClient(secrets.auth_token, config.environment);
 
       // 2️⃣ fetch contact
-      const contact = await Contact.findById(
-        session.contact_id
-      ).lean();
+      const contact = await Contact.findById(session.contact_id).lean();
 
       if (!contact) {
         throw new Error("Contact not found for Borzo node");
@@ -414,62 +389,38 @@ export const executeNode = async ({
 
       // 3️⃣ SWITCH BASED ON ACTION
       switch (node.borzo_action) {
-
         case "calculate": {
-          const payload = buildBorzoPayload(
-            node,
-            contact,
-            session.data
-          );
+          const payload = buildBorzoPayload(node, contact, session.data);
           response = await borzo.calculatePrice(payload);
           break;
         }
 
         case "create": {
-          const payload = buildBorzoPayload(
-            node,
-            contact,
-            session.data
-          );
+          const payload = buildBorzoPayload(node, contact, session.data);
           response = await borzo.createOrder(payload);
           break;
         }
 
         case "update": {
-          const orderId = interpolate(
-            node.order_id!,
-            session.data
-          );
-          response = await borzo.updateOrder(
-            orderId,
-            node.config || {}
-          );
+          const orderId = interpolate(node.order_id!, session.data);
+          response = await borzo.updateOrder(orderId, node.config || {});
           break;
         }
 
         case "cancel": {
-          const orderId = interpolate(
-            node.order_id!,
-            session.data
-          );
+          const orderId = interpolate(node.order_id!, session.data);
           response = await borzo.cancelOrder(orderId);
           break;
         }
 
         case "track": {
-          const deliveryId = interpolate(
-            node.order_id!,
-            session.data
-          );
+          const deliveryId = interpolate(node.order_id!, session.data);
           response = await borzo.getCourierLocation(deliveryId);
           break;
         }
 
         case "get_order": {
-          const orderId = interpolate(
-            node.order_id!,
-            session.data
-          );
+          const orderId = interpolate(node.order_id!, session.data);
           response = await borzo.getOrderInfo(orderId);
           break;
         }
@@ -487,7 +438,7 @@ export const executeNode = async ({
           $set: {
             [`attributes.${saveKey}`]: response.order.payment_amount,
           },
-        }
+        },
       );
 
       return moveNext();
@@ -498,15 +449,12 @@ export const executeNode = async ({
         throw new Error("razorpay_payment node config missing");
       }
 
-      const razorpayConfig = await getIntegration(
+      const { config, secrets } = await getIntegration(
         automation.account_id.toString(),
-        "razorpay"
+        "razorpay",
       );
 
-      const razorpay = new RazorpayService(
-        razorpayConfig.key_id,
-        razorpayConfig.key_secret
-      );
+      const razorpay = new RazorpayService(config.key_id, secrets.key_secret);
 
       const contact = await Contact.findById(session.contact_id).lean();
       if (!contact) throw new Error("Contact not found");
@@ -518,14 +466,11 @@ export const executeNode = async ({
         ...contact.attributes, // 🔥 THIS IS THE REAL FIX
       };
 
-      const itemAmount = Number(
-        interpolate(node.config.item_amount, context)
-      );
+      const itemAmount = Number(interpolate(node.config.item_amount, context));
 
       const deliveryAmount = Number(
-        interpolate(node.config.delivery_amount, context)
+        interpolate(node.config.delivery_amount, context),
       );
-
 
       const totalAmount = itemAmount + deliveryAmount;
 
@@ -588,13 +533,11 @@ export const executeNode = async ({
         from,
         text,
         node.config.button_text || "Pay Now 💳",
-        session.data.payment.payment_link
+        session.data.payment.payment_link,
       );
-
 
       return moveNext();
     }
-
 
     default:
       console.warn("⚠️ Unsupported node type:", node.type);

@@ -2,10 +2,12 @@ import express from "express";
 import {
   getMessagesByContact,
   markMessagesAsRead,
+  sendMediaMessage,
   sendTextMessage,
 } from "../controllers/message.controller";
 import { authMiddleware } from "../middlewares/auth.middleware";
 import { subscriptionGuard } from "../middlewares/subcription.middleware";
+import { upload } from "../middlewares/upload.middleware";
 
 const router = express.Router();
 
@@ -16,6 +18,13 @@ router.patch(
   authMiddleware,
   subscriptionGuard,
   markMessagesAsRead,
+);
+router.post(
+  "/send-media",
+  authMiddleware,
+  subscriptionGuard,
+  upload.array("files", 10), // max 10 files
+  sendMediaMessage,
 );
 
 export default router;

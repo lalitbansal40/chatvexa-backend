@@ -1,12 +1,14 @@
 import { Schema, model, models, Types } from "mongoose";
 
 export interface ChannelDocument {
-  channel_name: string;          // e.g. cake-arena
-  phone_number_id: string;       // WhatsApp phone_number_id
-  display_phone_number: string;  // 917378226593
-  access_token: string;          // WhatsApp access token
+  channel_name: string;
+  waba_id: string; // 🔥 NEW
 
-  account_id: Types.ObjectId;    // 🔥 NEW (User / Account ID)
+  phone_number_id: string;
+  display_phone_number: string;
+  access_token: string;
+
+  account_id: Types.ObjectId;
 
   is_active: boolean;
 
@@ -22,10 +24,17 @@ const ChannelSchema = new Schema<ChannelDocument>(
       index: true,
     },
 
+    // ✅ WABA ID (IMPORTANT)
+    waba_id: {
+      type: String,
+      required: true,
+      index: true, // 🔥 fast query for templates
+    },
+
     phone_number_id: {
       type: String,
       required: true,
-      unique: true, // 🔥 one channel per WhatsApp number
+      unique: true,
       index: true,
     },
 
@@ -39,7 +48,6 @@ const ChannelSchema = new Schema<ChannelDocument>(
       required: true,
     },
 
-    // ✅ ACCOUNT / USER LINK
     account_id: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -58,7 +66,7 @@ const ChannelSchema = new Schema<ChannelDocument>(
   }
 );
 
-// 🔥 Helpful compound index
+// 🔥 Compound index
 ChannelSchema.index({ account_id: 1, is_active: 1 });
 
 export const Channel =

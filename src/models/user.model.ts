@@ -10,6 +10,7 @@ export interface UserDocument extends Document {
   name: string;
   role: "admin" | "user";
   is_active: boolean;
+  account_id: mongoose.Types.ObjectId;
   subscription?: {
     plan: PlanType;
     payment_status: PaymentStatus;
@@ -19,7 +20,7 @@ export interface UserDocument extends Document {
     payment_end_date?: Date;
     is_active: boolean;
   };
-
+  account_name: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +36,17 @@ const UserSchema = new Schema<UserDocument>(
     },
     name: {
       type: String,
+    },
+    account_id: {
+      type: Schema.Types.ObjectId,
+      ref: "Account",
+      required: true,
+      index: true,
+    },
+    account_name: {
+      type: String,
+      ref: "Account",
+      required: false,
     },
     role: {
       type: String,
@@ -57,34 +69,6 @@ const UserSchema = new Schema<UserDocument>(
     is_active: {
       type: Boolean,
       default: true,
-    },
-
-    // 🔥 EMBEDDED SUBSCRIPTION (MATCHING YOUR JSON)
-    subscription: {
-      plan: {
-        type: String,
-        enum: ["TRIAL", "MONTHLY", "YEARLY"],
-        default: "TRIAL",
-      },
-
-      payment_status: {
-        type: String,
-        enum: ["pending", "paid", "expired", "cancelled"],
-        default: "pending",
-      },
-
-      payment_id: { type: String },
-
-      amount: { type: Schema.Types.Mixed },
-
-      payment_start_date: { type: Date },
-
-      payment_end_date: { type: Date },
-
-      is_active: {
-        type: Boolean,
-        default: false,
-      },
     },
   },
   { timestamps: true },

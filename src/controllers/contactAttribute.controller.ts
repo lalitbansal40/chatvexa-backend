@@ -1,16 +1,32 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import mongoose from "mongoose";
 import ContactAttribute from "../models/contactAttribute.model";
+import { AuthRequest } from "../types/auth.types";
 
-export const upsertContactAttributes = async (req: Request, res: Response) => {
+/* =====================================================
+   UPSERT CONTACT ATTRIBUTES (ADMIN ONLY)
+===================================================== */
+export const upsertContactAttributes = async (
+  req: AuthRequest,
+  res: Response
+) => {
   try {
-    const accountId = (req.user as any)?.user_id;
+    const accountId = req.user?.account_id;
+    const role = req.user?.role;
     const { attributes } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(accountId)) {
+    if (!accountId || !mongoose.Types.ObjectId.isValid(accountId)) {
       return res.status(400).json({
         success: false,
         message: "Invalid accountId",
+      });
+    }
+
+    // 🔐 Only admin can update schema
+    if (role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin can update attributes",
       });
     }
 
@@ -21,10 +37,38 @@ export const upsertContactAttributes = async (req: Request, res: Response) => {
       });
     }
 
+    // 🔥 Validate attributes
+    const ids = new Set();
+
+    for (const attr of attributes) {
+      if (!attr.id || !attr.name || !attr.type) {
+        return res.status(400).json({
+          success: false,
+          message: "Each attribute must have id, name and type",
+        });
+      }
+
+      if (ids.has(attr.id)) {
+        return res.status(400).json({
+          success: false,
+          message: `Duplicate attribute id: ${attr.id}`,
+        });
+      }
+
+      if (!["string", "number", "boolean", "object"].includes(attr.type)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid type for ${attr.id}`,
+        });
+      }
+
+      ids.add(attr.id);
+    }
+
     const updated = await ContactAttribute.findOneAndUpdate(
       { account_id: accountId },
-      { attributes },
-      { new: true, upsert: true },
+      { $set: { attributes } },
+      { new: true, upsert: true }
     );
 
     return res.status(200).json({
@@ -33,7 +77,7 @@ export const upsertContactAttributes = async (req: Request, res: Response) => {
       data: updated,
     });
   } catch (error: any) {
-    console.error(error);
+    console.error("Upsert attributes error:", error);
 
     return res.status(500).json({
       success: false,
@@ -42,19 +86,34 @@ export const upsertContactAttributes = async (req: Request, res: Response) => {
   }
 };
 
-export const getContactAttributes = async (req: Request, res: Response) => {
+/* =====================================================
+   GET CONTACT ATTRIBUTES
+===================================================== */
+export const getContactAttributes = async (
+  req: AuthRequest,
+  res: Response
+) => {
   try {
-    const accountId = (req.user as any)?.user_id;
+    const accountId = req.user?.account_id;
+
+    if (!accountId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
 
     const data = await ContactAttribute.findOne({
       account_id: accountId,
-    });
+    }).lean();
 
     return res.status(200).json({
       success: true,
       data: data?.attributes || [],
     });
   } catch (error) {
+    console.error("Get attributes error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Internal server error",

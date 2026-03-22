@@ -1,13 +1,25 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { Channel } from "../models/channel.model";
 import mongoose from "mongoose";
+import { AuthRequest } from "../types/auth.types";
 
-export const createChannel = async (req: Request, res: Response) => {
+/* =====================================================
+   CREATE CHANNEL (ADMIN ONLY)
+===================================================== */
+export const createChannel = async (req: AuthRequest, res: Response) => {
   try {
-    const accountId = (req.user as any)?.user_id;
+    const accountId = req.user?.account_id;
+    const role = req.user?.role;
 
     if (!accountId) {
       return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // 🔐 Only admin can create channel
+    if (role !== "admin") {
+      return res.status(403).json({
+        message: "Only admin can create channel",
+      });
     }
 
     const {
@@ -28,25 +40,33 @@ export const createChannel = async (req: Request, res: Response) => {
       });
     }
 
-    // 🔍 check if phone_number_id already exists
-    const existing = await Channel.findOne({ phone_number_id });
-    if (existing) {
-      return res.status(400).json({
-        message: "Channel with this phone number already exists",
+    // 🚀 create directly (handle duplicate via DB)
+    let channel;
+    try {
+      channel = await Channel.create({
+        channel_name,
+        phone_number_id,
+        display_phone_number,
+        access_token,
+        account_id: accountId, // ✅ correct
       });
+    } catch (err: any) {
+      if (err.code === 11000) {
+        return res.status(400).json({
+          message: "Channel with this phone number already exists",
+        });
+      }
+      throw err;
     }
-
-    const channel = await Channel.create({
-      channel_name,
-      phone_number_id,
-      display_phone_number,
-      access_token,
-      account_id: accountId, // 🔥 LINK TO USER
-    });
 
     return res.status(201).json({
       message: "Channel created successfully",
-      channel,
+      channel: {
+        _id: channel._id,
+        channel_name: channel.channel_name,
+        phone_number_id: channel.phone_number_id,
+        display_phone_number: channel.display_phone_number,
+      }, // 🔐 hide access_token
     });
   } catch (error) {
     console.error("Create channel error:", error);
@@ -56,11 +76,16 @@ export const createChannel = async (req: Request, res: Response) => {
   }
 };
 
-export const getChannelsByAccountId = async (req: Request, res: Response) => {
+/* =====================================================
+   GET CHANNELS (ACCOUNT LEVEL)
+===================================================== */
+export const getChannelsByAccountId = async (
+  req: AuthRequest,
+  res: Response
+) => {
   try {
-    const accountId = (req.user as any)?.user_id;
+    const accountId = req.user?.account_id;
 
-    // validate accountId
     if (!accountId || !mongoose.Types.ObjectId.isValid(accountId)) {
       return res.status(400).json({
         success: false,
@@ -69,9 +94,10 @@ export const getChannelsByAccountId = async (req: Request, res: Response) => {
     }
 
     const channels = await Channel.find({
-      account_id: new mongoose.Types.ObjectId(accountId),
+      account_id: accountId,
       is_active: true,
     })
+      .select("-access_token") // 🔐 hide token
       .sort({ createdAt: -1 })
       .lean();
 
@@ -81,7 +107,7 @@ export const getChannelsByAccountId = async (req: Request, res: Response) => {
       data: channels,
     });
   } catch (error) {
-    console.error("Get Channels By AccountId Error:", error);
+    console.error("Get Channels Error:", error);
 
     return res.status(500).json({
       success: false,

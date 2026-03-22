@@ -1,19 +1,25 @@
 import { Types } from "mongoose";
 import Integration from "../models/integration.model";
 
+/* =====================================================
+   GET INTEGRATION (ACCOUNT BASED + SECURE)
+===================================================== */
 export const getIntegration = async (
-  userId: string,
+  accountId: string,
   slug: string
 ) => {
   const integration = await Integration.findOne({
-    user_id: new Types.ObjectId(userId),
+    account_id: new Types.ObjectId(accountId),
     slug,
     is_active: true,
-  });
+  }).select("+secrets"); // 🔐 include secrets
 
   if (!integration) {
     throw new Error(`${slug} integration not configured`);
   }
 
-  return integration.config;
+  return {
+    config: integration.config || {},
+    secrets: integration.secrets || {},
+  };
 };

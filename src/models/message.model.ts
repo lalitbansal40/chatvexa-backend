@@ -25,6 +25,13 @@ export interface MessageDocument extends Document {
 
   direction: MessageDirection;
   type: MessageType;
+  text: { type: String };
+
+  media: {
+    url: String;
+    mime_type: String;
+    filename: String;
+  };
 
   status: MessageStatus;
 
@@ -59,6 +66,13 @@ const MessageSchema = new Schema<MessageDocument>(
     },
 
     wa_message_id: { type: String, index: true },
+    text: { type: String },
+
+    media: {
+      url: String,
+      mime_type: String,
+      filename: String,
+    },
 
     payload: { type: Schema.Types.Mixed, required: true },
     reply_to: {
@@ -70,7 +84,8 @@ const MessageSchema = new Schema<MessageDocument>(
   },
   { timestamps: true },
 );
-
+MessageSchema.index({ contact_id: 1, createdAt: -1 });
+MessageSchema.index({ wa_message_id: 1 });
 const Message =
   mongoose.models.Message ||
   mongoose.model<MessageDocument>("Message", MessageSchema);

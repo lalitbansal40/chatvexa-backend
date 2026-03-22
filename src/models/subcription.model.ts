@@ -3,7 +3,7 @@ import mongoose, { Schema, Document } from "mongoose";
 export type PaymentStatus = "pending" | "paid" | "expired" | "cancelled";
 
 export interface SubscriptionDocument extends Document {
-  user_id: mongoose.Types.ObjectId;
+  account_id: mongoose.Types.ObjectId;
 
   payment_status: PaymentStatus;
   plan_name: string;
@@ -19,9 +19,9 @@ export interface SubscriptionDocument extends Document {
 
 const SubscriptionSchema = new Schema<SubscriptionDocument>(
   {
-    user_id: {
+    account_id: {
       type: Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Account",
       required: true,
       index: true,
     },
@@ -45,14 +45,11 @@ const SubscriptionSchema = new Schema<SubscriptionDocument>(
       default: false,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const Subscription =
   mongoose.models.Subscription ||
-  mongoose.model<SubscriptionDocument>(
-    "Subscription",
-    SubscriptionSchema
-  );
+  mongoose.model<SubscriptionDocument>("Subscription", SubscriptionSchema);
 
 export default Subscription;
